@@ -62,7 +62,9 @@ D auch das das ganze Ruhig wird  ( d schaut in die Vergangenheit)
 wenn das ganze passt kann der usb kabel entfernt werden.
 
 
+void updatejrk()
 
+ist erstmal auskommentiert. Dazu muss das autosteer fenster in agopengps angepasst werden.
 
 
 
