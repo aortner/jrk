@@ -19,8 +19,8 @@ else
   }
 
 void updatejrk(){
-  jrk.setProportionalCoefficient(Kp, 1);
-  jrk.setDerivativeCoefficient(Kd, 5);
-  jrk.setIntegralCoefficient(Ki, 1);
+  //jrk.setProportionalCoefficient(Kp, 1);
+ // jrk.setDerivativeCoefficient(Kd, 5);
+ // jrk.setIntegralCoefficient(Ki, 1);
     
   }
