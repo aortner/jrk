@@ -1,5 +1,5 @@
 # jrk
-Code for jrk
+Code für jrk
 
 Anschluss:
 
