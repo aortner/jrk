@@ -39,6 +39,8 @@ andere Richtung einschlagen 2. learn drucken
 
 fertig.
 
+Wenn Motor oder Hall Sensor falsch herum angeschlossen ist kann man das nachher mit invert ändern.
+
 Tap PID
 
 P oben 10-20 untern Strich 1
