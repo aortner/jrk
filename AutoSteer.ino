@@ -3,20 +3,15 @@
 #include <JrkG2.h>
 
 JrkG2I2C jrk;
-
+ 
 #define RAD2GRAD 57.2957795
-
-#define LED_PIN 13
-#define   DIR_PIN    12  //PB4
-#define   PWM_PIN    11  //PB3
-#define WORKSW_PIN 4  //PD4
-#define STEERSW_PIN 10 //PB2
-
-#define RELAY1_PIN 5  //PD5
-#define RELAY2_PIN 6  //PD6
-#define RELAY3_PIN 7  //PD7
-#define RELAY4_PIN 8  //PB0
-#define RELAY5_PIN 9  //PB1
+                     
+  #define WORKSW_PIN 4  //PD4
+  #define STEERSW_PIN 5 //PD5
+  #define RELAY1_PIN 6  //PD6
+  #define   DIR_PIN  7  //PD7
+  //pin 8 is ether
+  #define   PWM_PIN  9  //PB1  
 
 //loop time variables in microseconds
 const unsigned int LOOP_TIME = 100; //100hz
@@ -32,16 +27,16 @@ bool isDataFound = false, isSettingFound = false;
 int header = 0, tempHeader = 0, temp;
 
 byte relay = 0, uTurn = 0, speeed = 0, workSwitch = 0, steerSwitch = 1, switchByte = 0;
-float distanceFromLine = 0; // not used
+float distanceFromLine = 0, corr = 0;
 
 //steering variables
 float steerAngleActual = 0;
 int steerPrevSign = 0, steerCurrentSign = 0; // the steering wheels angle currently and previous one
 float steerAngleSetPoint = 0; //the desired angle from AgOpen
-long steeringPosition = 0, steeringPositionZero = 2046; //from steering sensor
+long steeringPosition = 0, steeringPositionZero ,steercenter=2048, steeringZero=128; //from steering sensor
 float steerAngleError = 0; //setpoint - actual
 float distanceError = 0; //
-float steerSensorCounts = 55;
+float steerSensorCounts = 20;
 
 //inclinometer variables
 //int roll = 0;
@@ -67,21 +62,13 @@ float lastError = 0, lastLastError = 0, integrated_error = 0, dError = 0;
 void setup()
 {
   
-	pinMode(LED_PIN, OUTPUT); //configure LED for output
-	pinMode(RELAY1_PIN, OUTPUT); //configure RELAY1 for output //Pin 5
-	pinMode(RELAY2_PIN, OUTPUT); //configure RELAY2 for output //Pin 6
-	pinMode(RELAY3_PIN, OUTPUT); //configure RELAY3 for output //Pin 7
-	pinMode(RELAY4_PIN, OUTPUT); //configure RELAY4 for output //Pin 8
-	pinMode(RELAY5_PIN, OUTPUT); //configure RELAY5 for output //Pin 9
-	//pinMode(RELAY6_PIN, OUTPUT); //configure RELAY6 for output //Pin 10
-	//pinMode(RELAY7_PIN, OUTPUT); //configure RELAY7 for output //Pin A4
-	//pinMode(RELAY8_PIN, OUTPUT); //configure RELAY8 for output //Pin A5
-
-	pinMode(DIR_PIN, OUTPUT); //D11 PB3 direction pin of PWM Board
-
-	//keep pulled high and drag low to activate, noise free safe
-	pinMode(WORKSW_PIN, INPUT_PULLUP);   //Pin D4 PD4
-	pinMode(STEERSW_PIN, INPUT_PULLUP);  //Pin 10 PB2
+	pinMode(DIR_PIN, OUTPUT); //D12 PB3 direction pin of PWM Board
+    
+  //keep pulled high and drag low to activate, noise free safe    
+  pinMode(WORKSW_PIN, INPUT_PULLUP);   //Pin D4 PD4
+  pinMode(STEERSW_PIN, INPUT_PULLUP);  //Pin 11 PB2  pinMode(RELAY1_PIN, OUTPUT); //configure RELAY1 for output //Pin 5
+  pinMode(RELAY1_PIN, OUTPUT); //configure RELAY2 for output //Pin 6
+  pinMode(DIR_PIN, OUTPUT); //D11 PB3 direction pin of PWM Board
 
 	//set up communication
 	Wire.begin();
@@ -94,6 +81,10 @@ void setup()
 
 void loop()
 {
+
+
+  
+   
 	/*
 	 * Loop triggers every 100 msec and sends back gyro heading, and roll, steer angle etc
 	 * All imu code goes in the loop
@@ -131,9 +122,32 @@ void loop()
 
 		//steering position and steer angle
 
-
-   steeringPosition =  jrk.getScaledFeedback();	
+steeringPosition =  jrk.getScaledFeedback();	
 	 steeringPosition = ( steeringPosition - steeringPositionZero);   //read the steering position sensor
+
+//close enough to center, remove any correction
+    if (distanceFromLine <= 40 && distanceFromLine >= -40) corr = 0;
+    else
+    {
+      //use the integal value to adjust how much per cycle it increases
+      corr +=Ki;
+
+      //provide a limit - the old max integral value
+      if (corr > maxIntegralValue) corr = maxIntegralValue;
+
+      //now add the correction times counts per degree to fool steering position
+      if (distanceFromLine > 40) 
+      {
+        steerAngleSetPoint -= corr;
+      }
+      else
+      {
+        steerAngleSetPoint += corr;
+      }
+    }
+
+
+
 
 		//convert position to steer angle. 6 counts per degree of steer pot position in my case
 		//  ***** make sure that negative steer angle makes a left turn and positive value is a right turn *****
@@ -222,15 +236,17 @@ void loop()
     isSettingFound = false;  //reset the flag
 
     //change the factors as required for your own PID values
-    Kp = (float)Serial.read() * 0.1;   // read Kp from AgOpenGPS
-    Ki = (float)Serial.read() * 0.1;   // read Ki from AgOpenGPS
-    Kd = (float)Serial.read() * 0.1;   // read Kd from AgOpenGPS 
+ Kp = (float)Serial.read() * 1.0;   // read Kp from AgOpenGPS
+   Ki = (float)Serial.read() * 0.001;   // read Ki from AgOpenGPS
+    Kd = (float)Serial.read() * 1.0;   // read Kd from AgOpenGPS
     Ko = (float)Serial.read() * 0.1;   // read Ko from AgOpenGPS
     
-    steeringPositionZero = 2050 + Serial.read();  //read steering zero offset
+    steeringZero = Serial.read();  //read steering zero offset
+    steeringPositionZero = steercenter + map(steeringZero, 0, 255, -255, 255); 
+    
     minPWMValue = Serial.read(); //read the minimum amount of PWM for instant on
     maxIntegralValue = Serial.read(); //
     steerSensorCounts = Serial.read(); //sent as 1.0 times the setting displayed in AOG
-    updatejrk();
+  
   }
 }
