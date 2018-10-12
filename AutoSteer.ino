@@ -6,12 +6,14 @@ JrkG2I2C jrk;
  
 #define RAD2GRAD 57.2957795
                      
+ //timer 2 controls 9,10
   #define WORKSW_PIN 4  //PD4
   #define STEERSW_PIN 5 //PD5
   #define RELAY1_PIN 6  //PD6
   #define   DIR_PIN  7  //PD7
   //pin 8 is ether
   #define   PWM_PIN  9  //PB1  
+  //pin 10 is anothe timer 2 pwm
 
 //loop time variables in microseconds
 const unsigned int LOOP_TIME = 100; //100hz
@@ -33,10 +35,10 @@ float distanceFromLine = 0, corr = 0;
 float steerAngleActual = 0;
 int steerPrevSign = 0, steerCurrentSign = 0; // the steering wheels angle currently and previous one
 float steerAngleSetPoint = 0; //the desired angle from AgOpen
-long steeringPosition = 0, steeringPositionZero ,steercenter=2048, steeringZero=128; //from steering sensor
+int steeringPosition = 0, steeringPositionZero = 2048; //from steering sensor
 float steerAngleError = 0; //setpoint - actual
 float distanceError = 0; //
-float steerSensorCounts = 20;
+float steerSensorCounts = 44;
 
 //inclinometer variables
 //int roll = 0;
@@ -53,8 +55,8 @@ float Ki = 0.0f;//integral gain
 float Kd = 0.0f;  //derivative gain
 
 //integral values - **** change as required *****
-int   maxIntErr = 200; //anti windup max
-int maxIntegralValue = 20; //max PWM value for integral PID component
+float   maxIntErr = 200; //anti windup max
+float maxIntegralValue = 20; //max PWM value for integral PID component
 
 //error values
 float lastError = 0, lastLastError = 0, integrated_error = 0, dError = 0;
@@ -62,7 +64,7 @@ float lastError = 0, lastLastError = 0, integrated_error = 0, dError = 0;
 void setup()
 {
   
-	pinMode(DIR_PIN, OUTPUT); //D12 PB3 direction pin of PWM Board
+	 pinMode(DIR_PIN, OUTPUT); //D12 PB3 direction pin of PWM Board
     
   //keep pulled high and drag low to activate, noise free safe    
   pinMode(WORKSW_PIN, INPUT_PULLUP);   //Pin D4 PD4
@@ -113,12 +115,12 @@ void loop()
 
 			
 		workSwitch = digitalRead(WORKSW_PIN);  // read work switch
-		steerSwitch = digitalRead(STEERSW_PIN); //read auto steer enable switch open = 0n closed = Off
-		switchByte = 0;
+    steerSwitch = digitalRead(STEERSW_PIN); //read auto steer enable switch open = 0n closed = Off
+    switchByte = 0;
     switchByte = steerSwitch << 1; //put steerswitch status in bit 1 position
-   switchByte = workSwitch | switchByte;
-   
-		SetRelays(); //turn on off sections
+    switchByte = workSwitch | switchByte;
+
+    SetRelays(); //turn on off sections
 
 		//steering position and steer angle
 
@@ -135,7 +137,7 @@ steeringPosition =  jrk.getScaledFeedback();
       //provide a limit - the old max integral value
       if (corr > maxIntegralValue) corr = maxIntegralValue;
 
-      //now add the correction times counts per degree to fool steering position
+      //now add the correction to fool steering position
       if (distanceFromLine > 40) 
       {
         steerAngleSetPoint -= corr;
@@ -148,11 +150,10 @@ steeringPosition =  jrk.getScaledFeedback();
 
 
 
-
 		//convert position to steer angle. 6 counts per degree of steer pot position in my case
 		//  ***** make sure that negative steer angle makes a left turn and positive value is a right turn *****
 		// remove or add the minus for steerSensorCounts to do that.
-		steerAngleActual = (float)(steeringPosition) / -steerSensorCounts;
+		steerAngleActual = (float)(steeringPosition) / steerSensorCounts;
 
 		if (watchdogTimer < 10)
 		{
@@ -187,8 +188,8 @@ steeringPosition =  jrk.getScaledFeedback();
 		Serial.flush();   // flush out buffer
 	} //end of timed loop
 
-	  //****************************************************************************************
-    //This runs continuously, outside of the timed loop, keeps checking UART for new data
+	 //****************************************************************************************
+   //This runs continuously, outside of the timed loop, keeps checking UART for new data
     // header high/low, relay byte, speed byte, high distance, low distance, Steer high, steer low
   if (Serial.available() > 0 && !isDataFound && !isSettingFound) //find the header, 127H + 254L = 32766
   {
@@ -212,9 +213,6 @@ steeringPosition =  jrk.getScaledFeedback();
     //set point steer angle * 10 is sent
     steerAngleSetPoint = ((float)(Serial.read() << 8 | Serial.read()))*0.01; //high low bytes
 
-    //uturn byte read in
-    uTurn = Serial.read();
-    
     //auto Steer is off if 32020,Speed is too slow, motor pos or footswitch open
     if (distanceFromLine == 32020 | speeed < 1 | steerSwitch == 1)
     {
@@ -222,12 +220,13 @@ steeringPosition =  jrk.getScaledFeedback();
     }
     else          //valid conditions to turn on autosteer
     {
-      bitSet(PINB, 5);   //turn LED on
+      //bitSet(PINB, 5);   //turn LED on
       watchdogTimer = 0;  //reset watchdog
+      serialResetTimer = 0; //if serial buffer is getting full, empty it
     }
 
-    //just rec'd so buffer is not full
-    serialResetTimer = 0; //if serial buffer is getting full, empty it  
+    //uturn byte read in
+    uTurn = Serial.read();
   }
 
   //Settings Header has been found, 8 bytes are the settings
@@ -236,17 +235,13 @@ steeringPosition =  jrk.getScaledFeedback();
     isSettingFound = false;  //reset the flag
 
     //change the factors as required for your own PID values
- Kp = (float)Serial.read() * 1.0;   // read Kp from AgOpenGPS
-   Ki = (float)Serial.read() * 0.001;   // read Ki from AgOpenGPS
+    Kp = (float)Serial.read() * 1.0;   // read Kp from AgOpenGPS
+    Ki = (float)Serial.read() * 0.001;   // read Ki from AgOpenGPS
     Kd = (float)Serial.read() * 1.0;   // read Kd from AgOpenGPS
     Ko = (float)Serial.read() * 0.1;   // read Ko from AgOpenGPS
-    
-    steeringZero = Serial.read();  //read steering zero offset
-    steeringPositionZero = steercenter + map(steeringZero, 0, 255, -255, 255); 
-    
+    steeringPositionZero = 1948 + Serial.read()*2;  //read steering zero offset
     minPWMValue = Serial.read(); //read the minimum amount of PWM for instant on
-    maxIntegralValue = Serial.read(); //
-    steerSensorCounts = Serial.read(); //sent as 1.0 times the setting displayed in AOG
-  
+    maxIntegralValue = Serial.read()*0.1; //
+    steerSensorCounts = Serial.read(); //sent as 10 times the setting displayed in AOG
   }
 }
